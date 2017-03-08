@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>TortaTimer by Jordan DeLong v 1.0.0</title>
+</head>
+<body>
+
+<div>Timer Size Control</div>
+<input type="range" id="canvasRange" min="10" max="20" value="15" oninput="resizeCanvas()">
+<br>
+<canvas id="canvas" width="400px" height="400px"
+style="background-color:#333">
+</canvas>
+
+<br>
+<div id="digitalDisplay" style= "font-size: 3em;">0h 0m 0s</div>
+<br>
+<div>Time Set Controls</div>
+<br>
+<button onclick="setTime(30)">30 Mins</button>
+<button onclick="setTime(15)">15 Mins</button>
+<button onclick="setTime(5)">5 Mins</button>
+<button onclick="setTime(1)">1 Min</button>
+<br>
+<br>
+<button onclick="decrement()">--</button>
+<input type="range" id="myRange" min="0" max="60" value="0" oninput="sliderUpdate()">
+<button onclick="increment()">++</button>
+<input type="text" id="myText" value="0" oninput="textboxUpdate()">
+<br>
+<br>
+<div>Timer Controls</div>
+<br>
+<button id="on" onclick="startTimer()">Start Timer</button>
+<button id="pause" onclick="pauseTimer()" disabled=true>Pause Timer</button>
+<button id = "resume" onclick="resumeTimer()" disabled=true>Resume Timer</button>
+<button id = "stop" onclick="stopTimer()" disabled=true>Stop Timer</button>
+<br>
+
+
+<script>
+
+//initialization variables for canvas elements
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext("2d");
+var width = 400;
+var height = 400;
+var radius = canvas.height / 2;
+resizeCanvas();
+
+//initialization variables for drawing angles
+var degreesPerSecond = 0.1; // 360 degrees per 60 minutes, 6 degrees per 60 seconds
+var clockwise = false;
+var arcLength = 0;
+var startAngle = -90; //angle oriented from right horizontal as 0 degrees
+var intervalColor = "red";//fill color for the interval
+
+//timer variables
+var interval;
+var startTime = 0;
+var endTime = 0;
+var currentTime = 0;
+var timeRemaining = 0;
+var intervalDurationInMiliseconds = 0;
+var hasAlarmSounded = false;
+
+//draws the initial clock face
+drawClock();
+drawClockNumbers();
+
+function resizeCanvas()
+{
+	var val = document.getElementById("canvasRange").value;
+  console.log(val/10);
+  ctx.canvas.width  =  width * (val/10) ;
+  ctx.canvas.height =  height * (val/10);
+  radius = canvas.height / 2;
+	ctx.translate(radius, radius);
+	ctx.scale(.8,.8);
+  
+	drawClockNumbers();
+	sliderUpdate();
+}
+//converts time given in miliseconds to its equivalent # of hours/minutes/seconds
+function updateDisplayTime(timeInMilis)
+{
+	 	var displayHours = Math.floor((timeInMilis % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    var displayMinutes = Math.floor((timeInMilis % (1000 * 60 * 60)) / (1000 * 60));
+    var displaySeconds = Math.floor((timeInMilis % (1000 * 60)) / 1000);
+
+	document.getElementById("digitalDisplay").innerHTML = displayHours + "h " +displayMinutes + "m " + displaySeconds + "s";
+}
+
+//determines interval duration and arc length of the interval angle from time given in minutes  
+function setTime(timeInMinutes)
+{
+		intervalDurationInMiliseconds = minutesToMiliseconds(timeInMinutes);//input is given in minutes, interval calculations are made in miliseconds
+    
+    var totalTimeInSeconds = milisecondsToSeconds(intervalDurationInMiliseconds); //time in seconds
+   
+    arcLength = totalTimeInSeconds * degreesPerSecond; //360 degrees in a circle, 60 minutes in an hour, convert minutes to seconds to get degree/sec
+    
+    updateDisplayTime(intervalDurationInMiliseconds); //updates digital display
+    
+    document.getElementById("myText").value = timeInMinutes; //adjusts textbox value to match current interval in minutes
+    document.getElementById("myRange").value = timeInMinutes; //adjust slider value to match current interval in minutes
+    
+    drawSegment(startAngle,(-arcLength),intervalColor,!clockwise); //draws interval angle
+    drawClock(); //draws clock face on top of interval angle
+    
+}
+
+//initializes timer variables and instantiates the interval object
+function startTimer()
+{
+		startTime = Date.now(); //start time of interval begins as soon as startTimer is called
+    endTime = (startTime + intervalDurationInMiliseconds);
+    currentTime = startTime;
+    timeRemaining = endTime - currentTime; //time remaining in the current interval
+    hasAlarmSounded = false;
+    
+    interval = setInterval(updateInterval,1); //instantiates interval, updates every milisecond
+    
+    //determines which buttons are enabled and disabled while the interval is active
+    document.getElementById("on").disabled = true;
+    document.getElementById("resume").disabled = true;
+    document.getElementById("pause").disabled = false;
+    document.getElementById("stop").disabled = false;
+
+}
+
+//updates timer variables adjusts draw functions according to the current time givien in miliseconds
+function updateInterval()
+{
+    currentTime = Date.now();
+    timeRemaining = endTime - currentTime;
+    var timeRemainingInSeconds = milisecondsToSeconds(timeRemaining);
+		
+    //continue updating the interval until it reaches less than ~10 miliseconds
+    //this approximation is used as a measure to prevent interval from running over, still accurate to the nearest second
+    if(timeRemaining > 10)
+    {
+      arcLength =  (Math.floor(((timeRemainingInSeconds * degreesPerSecond) * 10))/10); //recalculate interval angle
+      updateDisplayTime(timeRemaining); //update digital display
+      drawSegment(startAngle,(-arcLength),intervalColor,!clockwise); //redraw interval angle
+      drawClock();
+    }
+    //calls function to stop the interval only once sometime within the stopping range(~10 milisecons)
+    else
+    {
+    	if(!hasAlarmSounded)
+      {
+      	stopTimer();
+      }
+    }  
+}
+
+//clears the current interval object but leaves timer variables at the values they were when this function is called creating a "pause", enables the resume button
+function pauseTimer()
+{
+		
+		clearInterval(interval);
+    
+    document.getElementById("pause").disabled = true;
+    document.getElementById("resume").disabled = false;
+}
+
+//reinstantiates interval from current time of when this function is called
+//recalculates end time based on the new start time
+function resumeTimer()
+{
+
+		startTime = Date.now();
+    endTime = startTime + timeRemaining; //end time is based on time remaining instead of the full interval duration
+    currentTime = endTime - startTime;
+    timeRemaining = endTime - currentTime;
+    hasAlarmSounded = false;
+    
+    interval = setInterval(updateInterval,1);//reinstantiates a new interval
+    
+    document.getElementById("resume").disabled = true;
+    document.getElementById("pause").disabled = false;
+}
+
+//clears interval and resets timer variables, resets digital display and redraws default clockface
+//displays alert message
+function stopTimer()
+{
+    	if(!hasAlarmSounded)
+      {
+      	clearInterval(interval);
+        startTime = 0;
+				endTime = 0;
+        currentTime = 0;
+        timeRemaining = 0;
+        intervalDurationInMiliseconds = 0;
+        hasAlarmSounded = true;
+        
+      	drawClock();
+        setTime(0);
+        updateDisplayTime(0);
+      	alert("Time!");
+      }
+      
+    document.getElementById("on").disabled = false;
+    document.getElementById("resume").disabled = true;
+    document.getElementById("pause").disabled = true;
+    document.getElementById("stop").disabled = true;
+}
+
+//draws clock features
+function drawClock() {
+    
+    //draws circle for clockface background
+    ctx.arc(0, 0, radius, 0 , 2 * Math.PI);
+    ctx.fillStyle = "white";
+    ctx.fill();
+		
+    //draws dircle for clockface center
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.arc(0,0,radius*0.20, 0, 2 * Math.PI);
+    ctx.fillStyle = "black";
+    ctx.fill();
+    
+    ctx.textBaseLine = "middle";
+   	ctx.textAlign = "center";
+   	ctx.font = radius*0.05 + "px Arial";
+   	ctx.fillStyle = "yellow";
+    ctx.moveTo(0,0);
+    ctx.fillText("Torta Timer",0, radius * -.09);
+    ctx.fillText("By",0, radius * 0);
+    ctx.fillText("Jordan DeLong",0, radius * .09);
+    ctx.fillText("v 1.0.0",0, radius * .15);
+
+	 //draws a tick to mark each minute for an hour interval
+   for(var i = 0 ; i < 360; i+=6)
+   {
+        drawUnit(i);  
+   }
+
+}
+
+//draws tick lines representing one minute at each corresponding angle in the circle
+function drawUnit(angle)
+{
+   ctx.save();
+   var lineLength = radius * 0.9;
+   
+   //minutes repesenting 5 minute intervals have more width
+   if(angle % 5 == 0)
+   {
+      ctx.lineWidth = 6;
+   }
+   else
+   {
+      ctx.lineWidth = 3;
+      lineLength = radius *.95;
+   }
+   
+   //determine the angle to begin drawing the minute line
+   var startPosX = Math.cos(degreesToRadians(angle))*lineLength;
+   var startPosY = Math.sin(degreesToRadians(angle))*lineLength;
+   var endPosX = Math.cos(degreesToRadians(angle))*radius;
+   var endPosY = Math.sin(degreesToRadians(angle))*radius;
+
+	 //draw minute marker at the given angle
+   ctx.beginPath();
+   ctx.moveTo(startPosX,startPosY);
+   ctx.lineTo(endPosX,endPosY);
+   ctx.stroke();
+   ctx.restore();
+}
+
+//draws numbers corresponding to five minute intervals withinin an hour
+function drawClockNumbers()
+{
+   ctx.save();
+   
+   ctx.textBaseLine = "middle";
+   ctx.textAlign = "center";
+   ctx.font = radius*0.15 + "px Arial";
+   ctx.fillStyle = "yellow";
+  
+   var ang;
+   var num;
+   var rad = radius + (.30 * radius);
+   
+   for(num = 0; num < 12; num++)
+   {
+    ang = num * (Math.PI / 6);//for each 5 minute interval
+    
+    //rotate the context to the around the rim of the circle
+    ctx.rotate(ang);
+    ctx.translate(0, -rad*0.85);
+    ctx.rotate(-ang);
+    
+    //draw the numerical value of the current interval and reset the orientation for the next interval
+    ctx.fillText((60 - num * 5).toString(), 0, (rad * .040));
+    
+    ctx.rotate(ang);
+    ctx.translate(0, rad*0.85);
+    ctx.rotate(-ang);
+   }
+
+   ctx.restore();
+}
+
+//draws the angle that represents the time remaining in the interval
+function drawSegment(startAngle,arcLength,color,direction)
+{
+    ctx.save();
+		//convert degrees to radians so the angle can be drawn by the arc function
+    var startAngle = degreesToRadians(startAngle);
+    var arcLength = degreesToRadians(arcLength);
+    //add arc length to starting angle to get the ending angle
+    var endAngle = startAngle + arcLength;
+   
+    //draws the angle
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.arc(0,0,radius, startAngle, endAngle, direction);
+    //fills in the area inside the angle with a given color
+    ctx.fillStyle = color;
+    ctx.fill();
+    //creates an outline around the angle, 
+    ctx.lineWidth = 2;
+    ctx.lineTo(0,0)
+    ctx.stroke();
+
+    ctx.restore();
+    
+}
+
+//increases the range value of the time set slider by one then updates the display
+function increment() {
+    document.getElementById("myRange").stepUp(1);
+    sliderUpdate();
+}
+//decreases the range value of the time set slider by one then updates the display
+function decrement() {
+    document.getElementById("myRange").stepDown(1);
+    sliderUpdate();
+}
+
+//reassigns the value of the time set textbox if its input has been changed
+function textboxUpdate()
+{
+	var val = document.getElementById("myText").value;
+    
+    //if the inputted value is above or below the range [0:60] adjust value to the min/max value of the range
+    if(val > 60)
+    {
+    	document.getElementById("myText").value = 60;
+        val = 60;
+    }
+    else if(val < 0)
+    {
+    	document.getElementById("myText").value = 0;
+        val = 0;
+    }
+    
+	document.getElementById("myRange").value = val
+  setTime(val);
+}
+
+//sets the time interval given in minutes with current range value of the time set slider, then updates the display
+function sliderUpdate()
+{
+	var val = document.getElementById("myRange").value;
+	document.getElementById("myText").value = val
+  setTime(val);
+}
+
+//converts degrees to radians, canvas library draw functions take radians as paramaters
+function degreesToRadians(degrees)
+{
+    return (degrees * Math.PI)/180;
+}
+
+//converts minutes to seconds, used when calculating arc length from time remaining * degrees per second
+function minutesToSeconds(minutes)
+{
+    return (minutes * 60);
+}
+//converts minutes to miliseconds, miliseconds are the baseline units used for interval calculations
+function minutesToMiliseconds(minutes)
+{
+    return (minutes * 60 * 1000);
+}
+
+//converts miliseconds to seconds
+function milisecondsToSeconds(miliseconds)
+{
+	return (miliseconds * 0.001);
+}
+
+</script>
+
+</body>
+</html>
+
